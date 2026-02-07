@@ -5,8 +5,6 @@ import Foundation
 public final class PerformanceEstimatorViewModel: ObservableObject {
     @Published public var settings: PerformanceSettings {
         didSet {
-            settings.workerCount = max(1, settings.workerCount)
-            settings.maxRAMMB = max(128, settings.maxRAMMB)
             recomputeEstimate()
         }
     }
@@ -25,14 +23,14 @@ public final class PerformanceEstimatorViewModel: ObservableObject {
         inputProfiler: InputProfiler = InputProfiler(),
         memoryEstimator: MemoryEstimator = MemoryEstimator()
     ) {
-        self.settings = settings
+        self.settings = Self.sanitize(settings)
         self.selectedFileURLs = selectedFileURLs
         self.inputProfiler = inputProfiler
         self.memoryEstimator = memoryEstimator
 
         let initialProfile = inputProfiler.profile(files: selectedFileURLs)
         self.profilingResult = initialProfile
-        self.memoryEstimate = memoryEstimator.estimate(
+        let initialEstimate = memoryEstimator.estimate(
             MemoryEstimateInput(
                 mode: settings.mode,
                 workerCount: settings.workerCount,
@@ -42,7 +40,8 @@ public final class PerformanceEstimatorViewModel: ObservableObject {
                 configuredMaxRAMMB: settings.maxRAMMB
             )
         )
-        self.recommendation = Self.buildRecommendation(from: self.memoryEstimate, capMB: settings.maxRAMMB)
+        self.memoryEstimate = initialEstimate
+        self.recommendation = Self.buildRecommendation(from: initialEstimate, capMB: settings.maxRAMMB)
     }
 
     public func updateSelectedFiles(_ urls: [URL]) {
@@ -52,19 +51,27 @@ public final class PerformanceEstimatorViewModel: ObservableObject {
     }
 
     public func updateMode(_ mode: ConversionMode) {
-        settings.mode = mode
+        var updated = settings
+        updated.mode = mode
+        settings = Self.sanitize(updated)
     }
 
     public func updateWorkerCount(_ count: Int) {
-        settings.workerCount = max(1, count)
+        var updated = settings
+        updated.workerCount = count
+        settings = Self.sanitize(updated)
     }
 
     public func updateMaxRAMMB(_ maxRAMMB: Int) {
-        settings.maxRAMMB = max(128, maxRAMMB)
+        var updated = settings
+        updated.maxRAMMB = maxRAMMB
+        settings = Self.sanitize(updated)
     }
 
     public func updateMultiprocessEnabled(_ enabled: Bool) {
-        settings.multiprocessEnabled = enabled
+        var updated = settings
+        updated.multiprocessEnabled = enabled
+        settings = Self.sanitize(updated)
     }
 
     public var estimateLabel: String {
@@ -102,5 +109,14 @@ public final class PerformanceEstimatorViewModel: ObservableObject {
                 warningMessage: "Estimated RAM usage exceeds the configured cap (\(capMB) MB). Throttle + queue is recommended."
             )
         }
+    }
+
+    private static func sanitize(_ settings: PerformanceSettings) -> PerformanceSettings {
+        PerformanceSettings(
+            mode: settings.mode,
+            maxRAMMB: max(128, settings.maxRAMMB),
+            workerCount: max(1, settings.workerCount),
+            multiprocessEnabled: settings.multiprocessEnabled
+        )
     }
 }
